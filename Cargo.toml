@@ -15,6 +15,9 @@ edition = "2018"
 # [badges]
 # travis-ci = { repository = "dalek-cryptography/ed25519-dalek", branch = "master"}
 
+[dependencies.hex]
+version = "0.4.3"
+
 [dependencies.aead]
 version = "0.4.0"
 default-features = false

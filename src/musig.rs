@@ -517,7 +517,9 @@ where K: Borrow<Keypair>, T: SigningTranscript+Clone
     {
         let theirs = CoR::Commit(theirs);
         match self.Rs.entry(them) {
-            Entry::Vacant(v) => { v.insert(theirs); () },
+            Entry::Vacant(v) => {
+                v.insert(theirs); () 
+            },
             Entry::Occupied(o) =>
                 if o.get() != &theirs {
                     let musig_stage = MultiSignatureStage::Commitment;
@@ -617,6 +619,8 @@ where K: Borrow<Keypair>, T: SigningTranscript+Clone
         let rewinds = rewinder(&self.stage.keypair.borrow().public);
         let R = self.compute_R(rewinder);
         self.t.commit_point(b"sign:R",&R);
+
+        println!("[CoSign] AggregatePk is {:?}\n R is {:?}", hex::encode(pk.to_bytes()), hex::encode(R.to_bytes()));
 
         let t0 = commit_public_keys(self.public_keys(true));
         let a_me = compute_weighting(t0, &self.stage.keypair.borrow().public);
@@ -778,14 +782,33 @@ mod tests {
 
     #[test]
     fn multi_signature() {
-        let keypairs: Vec<Keypair> = (0..16).map(|_| Keypair::generate()).collect();
-
+        let A = Keypair::from_bytes(
+            &hex::decode("8ca21dc4b84c0c98fc0ed7a0ce122ba120d492e07945b5d13a8a5480545b6b0bdf9a788969ae973ac46248556e43778da32ef8c02b2986df613ee31297224cdd005431ba274d567440f1da2fc4b8bc37e90d8155bf158966907b3f67a9e13b2d").unwrap()).unwrap();
+        let B = Keypair::from_bytes(
+            &hex::decode("5e3e40c010306ddbb82df71fd48b26dc69ac9881255801c0e1e5891f1f9ce90e0663e77042d78227dd45f7aed1a89da3631eb2b5837281b9e7bd6e2bbce03cce90b0ae8d9be3dab2f61595eb357846e98c185483aff9fa211212a87ad18ae547").unwrap()).unwrap();
+        let C = Keypair::from_bytes(
+            &hex::decode("9d5cfc67a1f07a96addd89cccfb2e171dd74e4c0733be8aa46833c20f6635708168298b86b73c34bf3fbcd2a64d515bbc46dfd1f0eea70ad29a128bae88519fa66768a820dd1e686f28167a572f5ea1acb8c3162cb33f0d4b2b6bee287742415").unwrap()).unwrap();
+        let keypairs: Vec<Keypair> = vec![A, B, C];
+        // let keypairs: Vec<Keypair> = (0..3).map(|_| Keypair::generate()).collect();
+    
+        println!("message is {:?}", hex::encode("We are legion!".as_bytes()));
         let t = signing_context(b"multi-sig").bytes(b"We are legion!");
-        let mut commits: Vec<_> = keypairs.iter().map( |k| k.musig(t.clone()) ).collect();
+        let mut commits: Vec<_> = keypairs.iter().map( 
+            |k| {
+                println!(
+                    "PublicKey: {:?}, PrivateKey: {:?}",
+                    // hex::encode(k.to_bytes()),
+                    hex::encode(k.public.to_bytes()),
+                    hex::encode(k.secret.key.to_bytes())
+                );
+                k.musig(t.clone())
+            }
+        ).collect();
         for i in 0..commits.len() {
-        let r = commits[i].our_commitment();
+            let r = commits[i].our_commitment();
             for j in commits.iter_mut() {
-                assert!( j.add_their_commitment(keypairs[i].public.clone(),r)
+                assert!(
+                    j.add_their_commitment(keypairs[i].public.clone(),r)
                     .is_ok() != (r == j.our_commitment()) );
             }
         }
@@ -800,6 +823,7 @@ mod tests {
             reveal_msgs.push(r);
         }
         let pk = reveals[0].public_key();
+        println!("AggregatePk is {:?}", hex::encode(pk.to_bytes()));
 
         let mut cosign_msgs: Vec<Cosignature> = Vec::with_capacity(reveals.len());
         let mut cosigns: Vec<_> = reveals.drain(..).map( |c| { assert_eq!(pk, c.public_key()); c.cosign_stage() } ).collect();
@@ -819,6 +843,8 @@ mod tests {
             c.add(keypairs[i].public.clone(),reveal_msgs[i].clone(),cosign_msgs[i].clone()).unwrap();
         }
         let signature = c.signature();
+
+        println!("signature is {:?}", hex::encode(signature.to_bytes()));
 
         assert!( pk.verify(t,&signature).is_ok() );
         for i in 0..cosigns.len() {
